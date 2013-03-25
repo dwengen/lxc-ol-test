@@ -23,7 +23,7 @@ spawn lxc-console -n $guest
 match_max 100000
 expect "Type <Ctrl+a q> to exit the console, <Ctrl+a Ctrl+a> to enter Ctrl+a itself\r"
 send -- "\r\r"
-expect "*OL-* login: "
+expect "*login: "
 send -- "root\r"
 expect -exact "root\r\r
 Password: "
@@ -41,6 +41,6 @@ send -- "ping -c 5 www.oracle.com\r"
 expect "*5 packets transmitted, ? received, * packet loss*\r\r
 *# "
 #send -- "exit\r"
-#expect "*OL-* login: "
+#expect "*login: "
 send -- "q"
 expect eof
