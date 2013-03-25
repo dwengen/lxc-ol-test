@@ -57,7 +57,7 @@ container_start()
 container_login()
 {
     becho "Logging in and test container $1 ..."
-    expect /root/lxc-ol-all.exp $1 |tee /container/$1-exp.log
+    expect /root/lxc-ol-install.exp $1 |tee /container/$1-exp.log
     strip_escapes /container/$1-exp.log
 }
 
