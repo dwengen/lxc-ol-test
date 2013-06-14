@@ -34,6 +34,7 @@ TEMPLATE_ROOTFSES="/root/template-rootfs/ol49-ovm /root/template-rootfs/ol58-min
 
 becho()
 {
+    echo
     echo "===================================================================="
     echo "$1"
     echo "===================================================================="
@@ -64,11 +65,7 @@ container_login()
 container_destroy()
 {
     becho "Shutdown container $1 ..."
-    # lxc-shutdown is nicer, but lxc-stop is quicker, and we're going to
-    # lxc-destroy the container anyways, so uncomment that one instead
-    # if you don't care about testing lxc-shutdown...
-    lxc-shutdown -w -n $1
-    #lxc-stop -n $1
+    lxc-stop -t 120 -n $1
     lxc-wait -n $1 -s STOPPED
 
     becho "Destroying container $1 ..."
