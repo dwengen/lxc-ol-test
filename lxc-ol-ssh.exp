@@ -1,0 +1,41 @@
+#!/bin/expect -f
+#
+# Copyright (C) 2013 Oracle. GPL v2.
+# Author: Dwight Engen <dwight.engen@oracle.com>
+#
+# Expect script to ssh into a freshly created OL container.
+#
+
+# set to 1 to force conservative (slow) mode
+set force_conservative 0
+if {$force_conservative} {
+	set send_slow {1 .1}
+	proc send {ignore arg} {
+		sleep .1
+		exp_send -s -- $arg
+	}
+}
+
+set ipaddr [lindex $argv 0]
+set timeout -1
+spawn ssh $ipaddr
+match_max 100000
+expect "The authenticity of host*can't be established.\r"
+expect "Are you sure you want to continue connecting (yes/no)? "
+send -- "yes\r"
+expect "Warning: Permanently added*to the list of known hosts.\r"
+expect "root@*'s password: "
+send -- "root\r"
+expect "*# "
+send -- "ps aux\r"
+expect "*# "
+send -- "exit\r"
+expect eof
+send_user SSH-TEST-SUCCESS
+
+spawn scp /etc/services $ipaddr:
+expect "root@*'s password: "
+send -- "root\r"
+expect "services*100%"
+expect eof
+send_user SCP-TEST-SUCCESS
