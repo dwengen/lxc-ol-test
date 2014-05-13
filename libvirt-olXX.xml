@@ -1,0 +1,28 @@
+<domain type='lxc'>
+  <name>olXX</name>
+  <memory unit='TiB'>4</memory>
+  <currentMemory unit='KiB'>0</currentMemory>
+  <vcpu>4</vcpu>
+  <os>
+    <type arch='ARCH'>exe</type>
+    <init>/sbin/init</init>
+  </os>
+  <clock offset='utc'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <devices>
+    <filesystem type='mount' accessmode='passthrough'>
+      <source dir='/container/olXX/rootfs'/>
+      <target dir='/'/>
+    </filesystem>
+    <interface type='network'>
+      <source network='lxcnetA'/>
+    </interface>
+    <console type='pty'/>
+    <console type='pty'/>
+    <console type='pty'/>
+    <console type='pty'/>
+    <console type='pty'/>
+  </devices>
+</domain>
