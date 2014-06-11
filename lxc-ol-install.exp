@@ -18,16 +18,23 @@ if {$force_conservative} {
 }
 
 set guest [lindex $argv 0]
+set type  [lindex $argv 1]
 set timeout -1
-spawn lxc-console -n $guest
+if {$type == "lxc"} {
+	spawn lxc-console -n $guest
+}
+if {$type == "lvt"} {
+	spawn virsh -c lxc:/// console $guest
+}
 match_max 100000
-expect "Type <Ctrl+a q> to exit the console, <Ctrl+a Ctrl+a> to enter Ctrl+a itself\r"
+# expect "Type <Ctrl+a q> to exit the console, <Ctrl+a Ctrl+a> to enter Ctrl+a itself\r"
 send -- "\r\r"
 expect "*login: "
 send -- "root\r"
-expect -exact "root\r\r
-Password: "
+expect "*Password: "
 send -- "root\r"
+expect "*# "
+send -- "uname -a\r"
 expect "*# "
 # send -- "cat /etc/redhat-release\r"
 # expect "*# "
@@ -37,10 +44,18 @@ expect "*# "
 # expect "*# "
 send -- "ifconfig eth0\r"
 expect "*# "
+send -- "ip addr show dev eth0\r"
+expect "*# "
 send -- "ping -c 3 www.oracle.com\r"
-expect "*3 packets transmitted, ? received, * packet loss*\r\r
-*# "
+#expect "*3 packets transmitted, ? received, * packet loss*\r\r
+#*# "
+expect "*# "
 #send -- "exit\r"
 #expect "*login: "
-send -- "q"
+if {$type == "lxc"} {
+	send -- "q"
+}
+if {$type == "lvt"} {
+	send -- ""
+}
 expect eof

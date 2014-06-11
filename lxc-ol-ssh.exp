@@ -31,11 +31,11 @@ send -- "ps aux\r"
 expect "*# "
 send -- "exit\r"
 expect eof
-send_user SSH-TEST-SUCCESS
+send_user "SSH-TEST-SUCCESS\n"
 
 spawn scp /etc/services $ipaddr:
 expect "root@*'s password: "
 send -- "root\r"
 expect "services*100%"
 expect eof
-send_user SCP-TEST-SUCCESS
+send_user "SCP-TEST-SUCCESS\n"

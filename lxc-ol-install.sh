@@ -9,27 +9,34 @@
 # test the network by pinging www.oracle.com, and ssh into the container.
 # After this the container is stopped and destroyed.
 #
-# Assumes the expect script is in /root, and containers are in /container
+# Assumes containers are in /container
 #
-MIRRORURL="ftp://phocis/Oracle-Public-Yum"
 
+TOP=`dirname $0`
+MIRRORURL="http://delphi/Oracle-Public-Yum"
+
+TEST_LXC="n"
+TEST_LIBVIRT="y"
 TEST_CLONE="n"
-TEST_USERNS="y"
+TEST_USERNS="n"
 
 # Set which arch you want to install
 ARCHS="i386 x86_64"
 
 # Set which i386 releases you have mirrored
 OL4_i386_RELEASES="4.6 4.7 4.8 4.9 4.latest"
-OL5_i386_RELEASES="5.0 5.1 5.2 5.3 5.4 5.5 5.6 5.7 5.8 5.9"
-OL6_i386_RELEASES="6.0 6.1 6.2 6.3 6.4"
+OL5_i386_RELEASES="5.0 5.1 5.2 5.3 5.4 5.5 5.6 5.7 5.8 5.9 5.10 5.latest"
+OL6_i386_RELEASES="6.0 6.1 6.2 6.3 6.4 6.5 6.latest"
 ALL_i386_RELEASES="$OL4_i386_RELEASES $OL5_i386_RELEASES $OL6_i386_RELEASES"
+#ALL_i386_RELEASES="$OL5_i386_RELEASES $OL6_i386_RELEASES"
 
 # Set which x86_64 releases you have mirrored
 OL4_x86_64_RELEASES="4.6 4.7 4.8 4.9 4.latest"
 OL5_x86_64_RELEASES="5.0 5.1 5.2 5.3 5.4 5.5 5.6 5.7 5.8 5.9 5.10 5.latest"
-OL6_x86_64_RELEASES="6.0 6.1 6.2 6.3 6.4 6.5"
-ALL_x86_64_RELEASES="$OL4_x86_64_RELEASES $OL5_x86_64_RELEASES $OL6_x86_64_RELEASES"
+OL6_x86_64_RELEASES="6.0 6.1 6.2 6.3 6.4 6.5 6.latest"
+OL7_x86_64_RELEASES="7.0"
+ALL_x86_64_RELEASES="$OL4_x86_64_RELEASES $OL5_x86_64_RELEASES $OL6_x86_64_RELEASES $OL7_x86_64_RELEASES"
+#ALL_x86_64_RELEASES="$OL5_x86_64_RELEASES $OL6_x86_64_RELEASES $OL7_x86_64_RELEASES"
 
 # Set to any rootfs templates you want installed
 #TEMPLATE_ROOTFSES="/root/template-rootfs/ol49-ovm /root/template-rootfs/ol58-min /root/template-rootfs/ol62-ovm"
@@ -50,29 +57,33 @@ strip_escapes()
     sed -r -i -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K|G]//g' $1
 }
 
-container_start()
+# Generic funtions no matter if we're lxc or libvirt
+gen_container_uid_shift()
 {
-    becho "Starting container $1 ..."
-    lxc-start -d -n $1 -L /container/$1-con.log
-    lxc-wait -n $1 -s RUNNING
+    becho "Shifting uids $1 ..."
+    /home/dengen/src/nsexec/uidmapshift -b /container/$1/rootfs 0 100000 1000
+    echo "lxc.id_map = u 0 100000 1000" >> /container/$1/config
+    echo "lxc.id_map = g 0 100000 1000" >> /container/$1/config
+    /home/dengen/src/nsexec/uidmapshift -r /container/$1/rootfs
 }
 
-container_stop()
-{
-    becho "Shutdown container $1 ..."
-    lxc-stop -t 120 -n $1
-    #lxc-stop -n $1
-    lxc-wait -n $1 -s STOPPED
-}
-
-container_login()
+gen_container_login()
 {
     becho "Logging in and test container $1 ..."
-    expect /root/lxc-ol-install.exp $1 |tee /container/$1-exp.log
-    strip_escapes /container/$1-exp.log
+    expect $TOP/lxc-ol-install.exp $1 $2 |tee /container/$1-$2-exp.log
+    strip_escapes /container/$1-$2-exp.log
 }
 
-container_info()
+gen_container_ssh()
+{
+    becho "SSH into container $1 @ IP:$CONTAINER_IP ..."
+    sed -i "/^$CONTAINER_IP/d" ~/.ssh/known_hosts
+    expect $TOP/lxc-ol-ssh.exp $CONTAINER_IP |tee /container/$1-$2-ssh.log
+    strip_escapes /container/$1-$2-ssh.log
+    sed -i "/^$CONTAINER_IP/d" ~/.ssh/known_hosts
+}
+
+gen_container_info()
 {
     # wait for container to obtain an IP address
     #for try in `seq 1 20`; do
@@ -82,49 +93,91 @@ container_info()
     #    fi
     #    sleep 1
     #done
-    CONTAINER_IP=`grep 'inet addr' $1-exp.log |awk -F: '{print $2}' |awk '{print $1}'`
+    CONTAINER_IP=`grep 'inet addr' $1-$2-exp.log |awk -F: '{print $2}' |awk '{print $1}'`
+    # OL7 only has ip cmd, not ifconfig so the expect cmd does both
+    if [ x$CONTAINER_IP = "x" ]; then
+        CONTAINER_IP=`grep 'inet ' $1-$2-exp.log |awk '{print $2}' |awk -F/ '{print $1}'`
+    fi
 }
 
-container_ssh()
+
+
+lvt_container_define()
 {
-    becho "SSH into container $1 @ IP:$CONTAINER_IP ..."
-    sed -i "/^$CONTAINER_IP/d" ~/.ssh/known_hosts
-    expect /root/lxc-ol-ssh.exp $CONTAINER_IP |tee /container/$1-ssh.log
-    strip_escapes /container/$1-ssh.log
-    sed -i "/^$CONTAINER_IP/d" ~/.ssh/known_hosts
+    sed -e "s/olXX/$1/" $TOP/libvirt-olXX.xml >/tmp/lxc-olXX.xml
+    sed -i "s/ARCH/$2/" /tmp/lxc-olXX.xml
+    virsh -c lxc:/// define /tmp/lxc-olXX.xml
+    rm /tmp/lxc-olXX.xml
 }
 
-container_destroy()
+lvt_container_undefine()
 {
-    becho "Destroying container $1 ..."
-    lxc-destroy -n $1
+    virsh -c lxc:/// undefine $1
+}
 
+lvt_container_start()
+{
+    virsh -c lxc:/// start $1
+}
+
+lvt_container_stop()
+{
+    virsh -c lxc:/// destroy $1
+}
+
+lxc_container_start()
+{
+    becho "Starting container $1 ..."
+    lxc-start -d -n $1 -L /container/$1-con.log
+    lxc-wait -n $1 -s RUNNING
+}
+
+lxc_container_stop()
+{
+    becho "Shutdown container $1 ..."
+    #lxc-stop -t 120 -n $1
+    lxc-stop -n $1
+    lxc-wait -n $1 -s STOPPED
     # strip escape sequences from console log
     strip_escapes /container/$1-con.log
 }
 
-container_uid_shift()
+lxc_container_login()
 {
-    becho "Shifting uids $1 ..."
-    /home/dengen/src/nsexec/uidmapshift -b /container/$1/rootfs 0 100000 1000
-    echo "lxc.id_map = u 0 100000 1000" >> /container/$1/config
-    echo "lxc.id_map = g 0 100000 1000" >> /container/$1/config
-    /home/dengen/src/nsexec/uidmapshift -r /container/$1/rootfs
+    becho "Logging in and test container $1 ..."
+    expect $TOP/lxc-ol-install.exp lxc $1 |tee /container/$1-lxc-exp.log
+    strip_escapes /container/$1-lxc-exp.log
 }
 
-container_console()
+lxc_container_attach()
+{
+    becho "Attaching to $1 ..."
+    lxc-attach -n $1 -- /bin/cat /etc/redhat-release
+    if [ $? -eq 0 ]; then
+        LXC_ATTACH_SUCCESS=`expr $LXC_ATTACH_SUCCESS + 1`
+    fi
+}
+
+lxc_container_destroy()
+{
+    becho "Destroying container $1 ..."
+    lxc-destroy -n $1
+}
+
+lxc_container_console()
 {
     becho "Interactive testing with lxc-console. Ctrl-a-q to quit. Press ENTER"
     read
     lxc-console -n $1
 }
 
-container_clone()
+lxc_container_clone()
 {
     becho "Cloning $1 $2 ..."
     lxc-clone -o $1 -n $2
 }
 
+LXC_ATTACH_SUCCESS=0
 for arch in $ARCHS
 do
     for release in $(eval echo "\$ALL_"$arch"_RELEASES")
@@ -135,26 +188,43 @@ do
                    |tee /container/$ctname.install
         strip_escapes /container/$ctname.install
 
-	if [ $TEST_USERNS = y ]; then
-	    container_uid_shift $ctname
+	if [ $TEST_LXC = y ]; then
+	    if [ $TEST_USERNS = y ]; then
+		container_uid_shift $ctname
+	    fi
+
+	    lxc_container_start  $ctname
+	    gen_container_login  $ctname lxc
+	    gen_container_info   $ctname lxc
+	    gen_container_ssh    $ctname lxc
+	    lxc_container_attach $ctname
+	    lxc_container_stop   $ctname
+	    if [ $TEST_CLONE = y ]; then
+		lxc_container_clone   $ctname $ctname-01
+		lxc_container_start   $ctname-01
+		gen_container_login   $ctname-01 lxc
+		gen_container_info    $ctname-01 lxc
+		gen_container_ssh     $ctname-01 lxc
+		lxc_container_stop    $ctname-01
+		lxc_container_destroy $ctname-01
+	    fi
 	fi
 
-        container_start $ctname
-        container_login $ctname
-        container_info  $ctname
-        container_ssh   $ctname
-        container_stop  $ctname
-	if [ $TEST_CLONE = y ]; then
-	    container_clone   $ctname $ctname-01
-	    container_start   $ctname-01
-	    container_login   $ctname-01
-            container_info    $ctname-01
-            container_ssh     $ctname-01
-	    container_stop    $ctname-01
-	    container_destroy $ctname-01
+	if [ $TEST_LIBVIRT = y ]; then
+	    lvt_arch = $arch
+	    if [ $arch = "i386" ]; then
+		lvt_arch = "i686"
+	    fi
+	    lvt_container_define   $ctname $lvt_arch
+	    lvt_container_start    $ctname
+	    gen_container_login    $ctname lvt
+	    gen_container_info     $ctname lvt
+	    gen_container_ssh      $ctname lvt
+	    lvt_container_stop     $ctname
+	    lvt_container_undefine $ctname
 	fi
 
-        container_destroy $ctname
+        lxc_container_destroy $ctname
     done
 done
 
@@ -165,26 +235,35 @@ do
     lxc-create -n $ctname -t oracle -- -t $trootfs \
                |tee /container/$ctname.install
     strip_escapes /container/$ctname.install
-    container_start    $ctname
-    container_login    $ctname
-    container_stop     $ctname
-    container_destroy  $ctname
+    lxc_container_start    $ctname
+    gen_container_login    $ctname lxc
+    lxc_container_stop     $ctname
+    lxc_container_destroy  $ctname
 done
 
 # Generate report
-RPMCOUNT_TOTAL=0
-for arch in $ARCHS
-do
-    for release in $(eval echo "\$ALL_"$arch"_RELEASES")
-    do
-        ctname="OL-$arch-$release"
-        RPMCOUNT=`grep 'RPM-COUNT' $ctname-exp.log | tail -1 |awk '{print $2}'`
-        RPMCOUNT_TOTAL=`expr $RPMCOUNT_TOTAL + $RPMCOUNT`
-    done
-done
 
-echo "Installed    : `ls *.install |wc |awk '{print $1}'`"
-echo "Ping success : `grep '3 packets transmitted, 3 received' *exp.log | wc |awk '{print $1}'`"
-echo "SSH success  : `grep '^SSH-TEST-SUCCESS' *ssh.log | wc |awk '{print $1}'`"
-echo "SCP success  : `grep '^SCP-TEST-SUCCESS' *ssh.log | wc |awk '{print $1}'`"
-echo "Total RPMs   : $RPMCOUNT_TOTAL"
+echo "Installed          : `ls *.install |wc |awk '{print $1}'`"
+
+if [ $TEST_LXC = y ]; then
+    RPMCOUNT_TOTAL=0
+    for arch in $ARCHS
+    do
+	for release in $(eval echo "\$ALL_"$arch"_RELEASES")
+	do
+	    ctname="OL-$arch-$release"
+	    RPMCOUNT=`grep 'RPM-COUNT' $ctname-lxc-exp.log | tail -1 |awk '{print $2}'`
+	    RPMCOUNT_TOTAL=`expr $RPMCOUNT_TOTAL + $RPMCOUNT`
+	done
+    done
+    echo "Total RPMs         : $RPMCOUNT_TOTAL"
+    echo "LXC Attach success : $LXC_ATTACH_SUCCESS"
+    echo "LXC Ping success   : `grep '3 packets transmitted, 3 received' *lxc-exp.log | wc |awk '{print $1}'`"
+    echo "LXC SSH success    : `grep '^SSH-TEST-SUCCESS' *lxc-ssh.log | wc |awk '{print $1}'`"
+    echo "LXC SCP success    : `grep '^SCP-TEST-SUCCESS' *lxc-ssh.log | wc |awk '{print $1}'`"
+fi
+if [ $TEST_LIBVIRT = y ]; then
+    echo "LVT Ping success   : `grep '3 packets transmitted, 3 received' *lvt-exp.log | wc |awk '{print $1}'`"
+    echo "LVT SSH success    : `grep '^SSH-TEST-SUCCESS' *lvt-ssh.log | wc |awk '{print $1}'`"
+    echo "LVT SCP success    : `grep '^SCP-TEST-SUCCESS' *lvt-ssh.log | wc |awk '{print $1}'`"
+fi

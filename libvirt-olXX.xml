@@ -16,6 +16,11 @@
       <source dir='/container/olXX/rootfs'/>
       <target dir='/'/>
     </filesystem>
+    <!-- mount a tmpfs for /dev/shm, usage is in KB -->
+    <filesystem type='ram'>
+      <source usage='10000'/>
+      <target dir='/dev/shm'/>
+    </filesystem>
     <interface type='network'>
       <source network='lxcnetA'/>
     </interface>
