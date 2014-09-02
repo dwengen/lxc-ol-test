@@ -1,4 +1,4 @@
-#!/bin/expect -f
+#!/usr/bin/expect -f
 #
 # Copyright (C) 2013 Oracle. GPL v2.
 # Author: Dwight Engen <dwight.engen@oracle.com>
@@ -27,9 +27,24 @@ if {$type == "lvt"} {
 	spawn virsh -c lxc:/// console $guest
 }
 match_max 100000
-# expect "Type <Ctrl+a q> to exit the console, <Ctrl+a Ctrl+a> to enter Ctrl+a itself\r"
+
+proc exp_retry {timeout_arg retries tosend tomatch} {
+	set timeout $timeout_arg
+	for {set retry 1} {$retry < $retries} {incr retry 1} {
+		send -- $tosend
+		expect {
+			$tomatch { break }
+			timeout { }
+		}
+	}
+	set timeout 20
+}
+
+# Might need to send Enter a few times to summon the login prompt
+#exp_retry 5 20 "\r" "*login: "
 send -- "\r\r"
 expect "*login: "
+
 send -- "root\r"
 expect "*Password: "
 send -- "root\r"
@@ -47,14 +62,17 @@ expect "*# "
 # expect "*# "
 send -- "ifconfig eth0\r"
 expect "*# "
-send -- "ip addr show dev eth0\r"
+
+# OL7.0 doesn't have ifconfig, and we must wait for DHCP to assign an IP address
+exp_retry 5 10 "ip addr show dev eth0\r" "*inet*eth0"
 expect "*# "
+
 send -- "ping -c 3 www.oracle.com\r"
 #expect "*3 packets transmitted, ? received, * packet loss*\r\r
 #*# "
 expect "*# "
-#send -- "exit\r"
-#expect "*login: "
+send -- "exit\r"
+expect "*login: "
 if {$type == "lxc"} {
 	send -- "q"
 }
