@@ -16,7 +16,7 @@
 #
 
 TOP=`dirname $0`
-MIRRORURL="http://delphi/Oracle-Public-Yum"
+MIRRORURL="http://public-yum.oracle.com"
 
 TEST_LXC="y"
 TEST_LIBVIRT="y"
