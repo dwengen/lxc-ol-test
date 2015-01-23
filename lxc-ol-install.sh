@@ -9,6 +9,9 @@
 # test the network by pinging www.oracle.com, and ssh into the container.
 # After this the container is stopped and destroyed.
 #
+# The script can also be used to test that the containers created can
+# be started under libvirt's lxc driver as well.
+#
 # Assumes containers are in /container
 #
 
@@ -32,12 +35,14 @@ ALL_i386_RELEASES="$OL4_i386_RELEASES $OL5_i386_RELEASES $OL6_i386_RELEASES"
 # Set which x86_64 releases you have mirrored
 OL4_x86_64_RELEASES="4.6 4.7 4.8 4.9 4.latest"
 OL5_x86_64_RELEASES="5.0 5.1 5.2 5.3 5.4 5.5 5.6 5.7 5.8 5.9 5.10 5.latest"
-OL6_x86_64_RELEASES="6.0 6.1 6.2 6.3 6.4 6.5 6.latest"
+OL6_x86_64_RELEASES="6.0 6.1 6.2 6.3 6.4 6.5 6.6 6.latest"
 OL7_x86_64_RELEASES="7.0"
 ALL_x86_64_RELEASES="$OL4_x86_64_RELEASES $OL5_x86_64_RELEASES $OL6_x86_64_RELEASES $OL7_x86_64_RELEASES"
 
 # Set to any rootfs templates you want installed
 #TEMPLATE_ROOTFSES="/root/template-rootfs/ol49-ovm /root/template-rootfs/ol58-min /root/template-rootfs/ol62-ovm"
+
+# End of user settable variables
 
 becho()
 {
